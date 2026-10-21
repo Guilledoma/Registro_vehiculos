@@ -282,7 +282,7 @@ function statsFor(name,from){
   const c=S.cargas.filter(r=>r.veh===name),s=S.servicios.filter(r=>r.veh===name);
   const inP=r=>!from||(r.fecha||'')>=from;
   const fuel=c.filter(r=>r.energia!=='Electricidad'),el=c.filter(r=>r.energia==='Electricidad');
-  const o={name,litros:sum(fuel.filter(inP),'cant'),costoComb:sum(fuel.filter(inP),'costo'),kwh:sum(el.filter(inP),'cant'),costoElec:sum(el.filter(inP),'costo'),costoServ:sum(s.filter(inP),'costo'),n:c.filter(inP).length+s.filter(inP).length};
+  const o={name,litros:sum(fuel.filter(inP),'cant'),costoComb:sum(fuel.filter(inP),'costo'),kwh:sum(el.filter(inP),'cant'),minCarga:sum(el.filter(inP),'durMin'),costoElec:sum(el.filter(inP),'costo'),costoServ:sum(s.filter(inP),'costo'),n:c.filter(inP).length+s.filter(inP).length};
   const odos=[...c,...s].filter(r=>r.odo!==''&&r.odo!=null);
   const inO=odos.filter(inP).map(r=>+r.odo);
   let km=0;
@@ -516,7 +516,7 @@ function renderRes(){
   h+=row('Kilómetros recorridos',`${nf(km)} km`);
   if(km>0&&comb+elec>0)h+=row('Energía por km',money((comb+elec)/km,2));
   if(comb>0||T('litros')>0){h+=row('Combustible',money(comb));h+=row('Litros cargados',`${nf(T('litros'),1)} L`);if(T('litros')>0&&comb>0)h+=row('Precio medio por litro',money(comb/T('litros'),2))}
-  if(elec>0||T('kwh')>0){h+=row('Electricidad',money(elec));h+=row('kWh cargados',`${nf(T('kwh'),1)} kWh`);if(T('kwh')>0&&elec>0)h+=row('Precio medio por kWh',money(elec/T('kwh'),2))}
+  if(elec>0||T('kwh')>0){h+=row('Electricidad',money(elec));h+=row('kWh cargados',`${nf(T('kwh'),1)} kWh`);if(T('minCarga')>0)h+=row('Horas totales de carga',fmtDur(T('minCarga')));if(T('kwh')>0&&elec>0)h+=row('Precio medio por kWh',money(elec/T('kwh'),2))}
   if(serv>0)h+=row('Servicios y reparaciones',money(serv));
   st.forEach(x=>{if(x.litros>0)h+=row(`Consumo · ${esc(x.name)}`,x.l100!=null?`${nf(x.l100,1)} L/100 km`:'Falta un tramo con tanque lleno')});
   h+='</dl>';
