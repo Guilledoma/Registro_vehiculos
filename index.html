@@ -136,6 +136,10 @@ svg.ch{width:100%;height:auto;display:block;background:var(--surface);border:1px
             <label>Tiempo de carga (horas)<input type="number" inputmode="numeric" min="0" step="1" id="f-dh"></label>
             <label>Minutos<input type="number" inputmode="numeric" min="0" max="59" step="1" id="f-dm"></label>
           </div>
+          <div class="row2">
+            <label>Batería inicial (%)<input type="number" inputmode="numeric" min="0" max="100" step="1" id="f-b0"></label>
+            <label>Batería final (%)<input type="number" inputmode="numeric" min="0" max="100" step="1" id="f-b1"></label>
+          </div>
         </div>
       </div>
 
@@ -359,7 +363,7 @@ function fillLists(){
 }
 function resetForm(keep){
   U.edit=null;
-  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas','f-dh','f-dm'].forEach(id=>$('#'+id).value='');
+  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas','f-dh','f-dm','f-b0','f-b1'].forEach(id=>$('#'+id).value='');
   if(!keep)$('#f-lugar').value='';
   $('#f-fecha').value=today();
   $('#f-lleno').checked=true;
@@ -376,7 +380,7 @@ function startEdit(sheet,id){
   showTab('cargar');
   renderVehChips();
   U.mode=m;
-  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas','f-dh','f-dm'].forEach(i=>$('#'+i).value='');
+  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas','f-dh','f-dm','f-b0','f-b1'].forEach(i=>$('#'+i).value='');
   $('#f-fecha').value=r.fecha||today();
   $('#f-odo').value=r.odo;
   $('#f-notas').value=r.notas||'';
@@ -386,7 +390,7 @@ function startEdit(sheet,id){
   }else{
     $('#f-cant').value=r.cant;$('#f-costo').value=r.costo;
     if(m==='comb'){$('#f-energia').value=r.energia;$('#f-lugar').value=r.lugar||'';$('#f-lleno').checked=r.lleno!=='No'}
-    else{$('#f-lugar-e').value=r.lugar||'Casa';if(r.durMin!==''&&r.durMin!=null){$('#f-dh').value=Math.floor(r.durMin/60);$('#f-dm').value=r.durMin%60}}
+    else{$('#f-lugar-e').value=r.lugar||'Casa';if(r.durMin!==''&&r.durMin!=null){$('#f-dh').value=Math.floor(r.durMin/60);$('#f-dm').value=r.durMin%60}$('#f-b0').value=r.bat0==null?'':r.bat0;$('#f-b1').value=r.bat1==null?'':r.bat1}
   }
   $('#btnSave').textContent='Guardar cambios';
   $('#btnCancel').hidden=false;$('#btnDel').hidden=false;
@@ -416,9 +420,15 @@ function onSave(){
         durMin=(dh||0)*60+(dm||0);
       }
     }
+    let bat0='',bat1='';
+    if(m==='elec'){
+      bat0=num($('#f-b0').value);bat1=num($('#f-b1').value);
+      if((bat0!==''&&(bat0<0||bat0>100))||(bat1!==''&&(bat1<0||bat1>100)))return toast('La batería debe estar entre 0 y 100 %');
+      if(bat0!==''&&bat1!==''&&bat1<bat0)return toast('La batería final es menor que la inicial');
+    }
     let costo=num($('#f-costo').value);
     if(m==='elec'&&costo===''&&$('#f-lugar-e').value==='Casa'&&+S.settings.tariff>0)costo=Math.round(cant*S.settings.tariff*100)/100;
-    rec={fecha,veh:v.name,energia:m==='elec'?'Electricidad':$('#f-energia').value,odo,cant,costo,lugar:m==='elec'?$('#f-lugar-e').value:$('#f-lugar').value.trim(),lleno:m==='comb'?($('#f-lleno').checked?'Sí':'No'):'',durMin,notas};
+    rec={fecha,veh:v.name,energia:m==='elec'?'Electricidad':$('#f-energia').value,odo,cant,costo,lugar:m==='elec'?$('#f-lugar-e').value:$('#f-lugar').value.trim(),lleno:m==='comb'?($('#f-lleno').checked?'Sí':'No'):'',durMin,bat0,bat1,notas};
   }
   const last=lastOdo(v.name,U.edit&&U.edit.id);
   if(last!==null&&odo<last&&!confirm(`El odómetro (${nf(odo)}) es menor al último registrado (${nf(last)}). ¿Guardar igual?`))return;
@@ -467,6 +477,7 @@ function renderHist(){
       if(r.lugar)l2+=`<span>${esc(r.lugar)}</span>`;
       if(k==='comb'&&r.lleno==='Sí')l2+='<span>Tanque lleno</span>';
       if(k==='elec'&&r.durMin!==''&&r.durMin!=null)l2+=`<span>${fmtDur(r.durMin)}</span>`;
+      if(k==='elec'&&((r.bat0!==''&&r.bat0!=null)||(r.bat1!==''&&r.bat1!=null))){const f=v=>v===''||v==null?'?':v+'%';l2+=`<span>Batería ${f(r.bat0)} → ${f(r.bat1)}</span>`}
     }
     html+=`<li class="rec" data-s="${s}" data-id="${esc(r.id)}"><div class="bar" style="background:${col[k]}"></div><div class="in">
       <div class="l1"><span>${l1a}</span><span>${r.costo!==''?money(r.costo):'—'}</span></div>
@@ -573,7 +584,7 @@ async function api(method,body){
 }
 const clean=r=>{const o={...r};delete o._d;delete o._ts;return o};
 function normalize(sheet,x){
-  const n=['odo','cant','costo','proxKm','durMin'];
+  const n=['odo','cant','costo','proxKm','durMin','bat0','bat1'];
   const o={...x};
   n.forEach(k=>{if(k in o)o[k]=num(o[k])});
   o.id=String(o.id);
@@ -629,8 +640,8 @@ function exportXlsx(){
     return ws;
   };
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,mk(['Fecha','Vehículo','Energía','Odómetro (km)','Cantidad (L o kWh)','Costo total','Lugar','Tanque lleno','Duración de carga (min)','Notas','ID'],
-    sorted(S.cargas).map(r=>[r.fecha,r.veh,r.energia,r.odo,r.cant,r.costo,r.lugar,r.lleno,r.durMin,r.notas,r.id]),[0],[12,20,13,14,18,12,22,12,20,28,12]),'Cargas');
+  XLSX.utils.book_append_sheet(wb,mk(['Fecha','Vehículo','Energía','Odómetro (km)','Cantidad (L o kWh)','Costo total','Lugar','Tanque lleno','Duración de carga (min)','Batería inicial (%)','Batería final (%)','Notas','ID'],
+    sorted(S.cargas).map(r=>[r.fecha,r.veh,r.energia,r.odo,r.cant,r.costo,r.lugar,r.lleno,r.durMin,r.bat0,r.bat1,r.notas,r.id]),[0],[12,20,13,14,18,12,22,12,20,16,16,28,12]),'Cargas');
   XLSX.utils.book_append_sheet(wb,mk(['Fecha','Vehículo','Odómetro (km)','Tipo','Descripción','Taller','Costo','Próx. servicio (km)','Próx. servicio (fecha)','Notas','ID'],
     sorted(S.servicios).map(r=>[r.fecha,r.veh,r.odo,r.tipo,r.desc,r.taller,r.costo,r.proxKm,r.proxFecha,r.notas,r.id]),[0,8],[12,20,14,14,30,22,12,18,20,28,12]),'Servicios');
   XLSX.writeFile(wb,`Registro_vehiculos_${today()}.xlsx`);
