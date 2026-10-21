@@ -131,6 +131,12 @@ svg.ch{width:100%;height:auto;display:block;background:var(--surface);border:1px
         <label id="l-lugar-e">Lugar
           <select id="f-lugar-e"><option>Casa</option><option>Cargador público</option></select>
         </label>
+        <div id="g-dur" class="grp" hidden>
+          <div class="row2">
+            <label>Tiempo de carga (horas)<input type="number" inputmode="numeric" min="0" step="1" id="f-dh"></label>
+            <label>Minutos<input type="number" inputmode="numeric" min="0" max="59" step="1" id="f-dm"></label>
+          </div>
+        </div>
       </div>
 
       <div id="g-serv" class="grp" hidden>
@@ -244,6 +250,10 @@ const fdate=s=>{if(!s)return'';const [y,m,d]=String(s).split('-');return `${d}/$
 const vehs=()=>S.settings.vehicles;
 const curVeh=()=>vehs()[U.veh]||vehs()[0];
 const sum=(a,k)=>a.reduce((t,r)=>t+(Number(r[k])||0),0);
+function fmtDur(min){
+const h=Math.floor(min/60),m=min%60;
+return h?(m?`${h} h ${m} min`:`${h} h`):`${m} min`;
+}
 function toast(msg){
   document.querySelectorAll('.toast').forEach(t=>t.remove());
   const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);
@@ -328,6 +338,7 @@ function setMode(m){
   $('#l-lleno').hidden=m!=='comb';
   $('#l-lugar-c').hidden=m!=='comb';
   $('#l-lugar-e').hidden=m!=='elec';
+  $('#g-dur').hidden=m!=='elec';
   $('#l-cant').textContent=m==='elec'?'kWh':'Litros';
   if(!U.edit&&m==='comb')$('#f-energia').value=v.kind==='phev'?'Nafta':'Gasoil';
   renderSeg();renderBoard();updateHints();
@@ -348,7 +359,7 @@ function fillLists(){
 }
 function resetForm(keep){
   U.edit=null;
-  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas'].forEach(id=>$('#'+id).value='');
+  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas','f-dh','f-dm'].forEach(id=>$('#'+id).value='');
   if(!keep)$('#f-lugar').value='';
   $('#f-fecha').value=today();
   $('#f-lleno').checked=true;
@@ -365,7 +376,7 @@ function startEdit(sheet,id){
   showTab('cargar');
   renderVehChips();
   U.mode=m;
-  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas'].forEach(i=>$('#'+i).value='');
+  ['f-odo','f-cant','f-costo','f-desc','f-taller','f-costo-s','f-pkm','f-pfecha','f-notas','f-dh','f-dm'].forEach(i=>$('#'+i).value='');
   $('#f-fecha').value=r.fecha||today();
   $('#f-odo').value=r.odo;
   $('#f-notas').value=r.notas||'';
@@ -375,7 +386,7 @@ function startEdit(sheet,id){
   }else{
     $('#f-cant').value=r.cant;$('#f-costo').value=r.costo;
     if(m==='comb'){$('#f-energia').value=r.energia;$('#f-lugar').value=r.lugar||'';$('#f-lleno').checked=r.lleno!=='No'}
-    else $('#f-lugar-e').value=r.lugar||'Casa';
+    else{$('#f-lugar-e').value=r.lugar||'Casa';if(r.durMin!==''&&r.durMin!=null){$('#f-dh').value=Math.floor(r.durMin/60);$('#f-dm').value=r.durMin%60}}
   }
   $('#btnSave').textContent='Guardar cambios';
   $('#btnCancel').hidden=false;$('#btnDel').hidden=false;
@@ -397,9 +408,17 @@ function onSave(){
     sheet='cargas';
     const cant=num($('#f-cant').value);
     if(cant===''||cant<=0)return toast(m==='elec'?'Faltan los kWh':'Faltan los litros');
+    let durMin='';
+    if(m==='elec'){
+      const dh=num($('#f-dh').value),dm=num($('#f-dm').value);
+      if(dh!==''||dm!==''){
+        if((dh!==''&&(dh<0||!Number.isInteger(dh)))||(dm!==''&&(dm<0||dm>59||!Number.isInteger(dm))))return toast('Revisá el tiempo de carga: minutos de 0 a 59');
+        durMin=(dh||0)*60+(dm||0);
+      }
+    }
     let costo=num($('#f-costo').value);
     if(m==='elec'&&costo===''&&$('#f-lugar-e').value==='Casa'&&+S.settings.tariff>0)costo=Math.round(cant*S.settings.tariff*100)/100;
-    rec={fecha,veh:v.name,energia:m==='elec'?'Electricidad':$('#f-energia').value,odo,cant,costo,lugar:m==='elec'?$('#f-lugar-e').value:$('#f-lugar').value.trim(),lleno:m==='comb'?($('#f-lleno').checked?'Sí':'No'):'',notas};
+    rec={fecha,veh:v.name,energia:m==='elec'?'Electricidad':$('#f-energia').value,odo,cant,costo,lugar:m==='elec'?$('#f-lugar-e').value:$('#f-lugar').value.trim(),lleno:m==='comb'?($('#f-lleno').checked?'Sí':'No'):'',durMin,notas};
   }
   const last=lastOdo(v.name,U.edit&&U.edit.id);
   if(last!==null&&odo<last&&!confirm(`El odómetro (${nf(odo)}) es menor al último registrado (${nf(last)}). ¿Guardar igual?`))return;
@@ -447,6 +466,7 @@ function renderHist(){
       if(r.costo!==''&&r.cant>0)l2+=`<span>${money(r.costo/r.cant,2)}/${u}</span>`;
       if(r.lugar)l2+=`<span>${esc(r.lugar)}</span>`;
       if(k==='comb'&&r.lleno==='Sí')l2+='<span>Tanque lleno</span>';
+      if(k==='elec'&&r.durMin!==''&&r.durMin!=null)l2+=`<span>${fmtDur(r.durMin)}</span>`;
     }
     html+=`<li class="rec" data-s="${s}" data-id="${esc(r.id)}"><div class="bar" style="background:${col[k]}"></div><div class="in">
       <div class="l1"><span>${l1a}</span><span>${r.costo!==''?money(r.costo):'—'}</span></div>
@@ -553,7 +573,7 @@ async function api(method,body){
 }
 const clean=r=>{const o={...r};delete o._d;delete o._ts;return o};
 function normalize(sheet,x){
-  const n=['odo','cant','costo','proxKm'];
+  const n=['odo','cant','costo','proxKm','durMin'];
   const o={...x};
   n.forEach(k=>{if(k in o)o[k]=num(o[k])});
   o.id=String(o.id);
@@ -609,8 +629,8 @@ function exportXlsx(){
     return ws;
   };
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,mk(['Fecha','Vehículo','Energía','Odómetro (km)','Cantidad (L o kWh)','Costo total','Lugar','Tanque lleno','Notas','ID'],
-    sorted(S.cargas).map(r=>[r.fecha,r.veh,r.energia,r.odo,r.cant,r.costo,r.lugar,r.lleno,r.notas,r.id]),[0],[12,20,13,14,18,12,22,12,28,12]),'Cargas');
+  XLSX.utils.book_append_sheet(wb,mk(['Fecha','Vehículo','Energía','Odómetro (km)','Cantidad (L o kWh)','Costo total','Lugar','Tanque lleno','Duración de carga (min)','Notas','ID'],
+    sorted(S.cargas).map(r=>[r.fecha,r.veh,r.energia,r.odo,r.cant,r.costo,r.lugar,r.lleno,r.durMin,r.notas,r.id]),[0],[12,20,13,14,18,12,22,12,20,28,12]),'Cargas');
   XLSX.utils.book_append_sheet(wb,mk(['Fecha','Vehículo','Odómetro (km)','Tipo','Descripción','Taller','Costo','Próx. servicio (km)','Próx. servicio (fecha)','Notas','ID'],
     sorted(S.servicios).map(r=>[r.fecha,r.veh,r.odo,r.tipo,r.desc,r.taller,r.costo,r.proxKm,r.proxFecha,r.notas,r.id]),[0,8],[12,20,14,14,30,22,12,18,20,28,12]),'Servicios');
   XLSX.writeFile(wb,`Registro_vehiculos_${today()}.xlsx`);
