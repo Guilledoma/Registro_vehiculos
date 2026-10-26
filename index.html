@@ -592,13 +592,27 @@ async function api(method,body){
   return r.json();
 }
 const clean=r=>{const o={...r};delete o._d;delete o._ts;return o};
+
+/* Convierte cualquier formato de fecha que llegue de la hoja a yyyy-mm-dd */
+function isoFrom(s){
+  s=String(s||'').trim();
+  if(!s)return '';
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m)return `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  const d=new Date(s);
+  return isNaN(d)?'':isoDate(d);
+}
 function normalize(sheet,x){
   const n=['odo','cant','costo','proxKm','durMin','amp','bat0','bat1'];
   const o={...x};
   n.forEach(k=>{if(k in o)o[k]=num(o[k])});
+  if('fecha' in o)o.fecha=isoFrom(o.fecha);
+  if('proxFecha' in o)o.proxFecha=isoFrom(o.proxFecha);
   o.id=String(o.id);
   return o;
 }
+
 async function sync(manual){
   if(!S.settings.url){if(manual)toast('Primero pegá la URL de Google Sheets');return}
   if(syncing)return;
