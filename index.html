@@ -78,6 +78,8 @@ button.line{height:44px;background:var(--surface)}
 .dl div{display:flex;justify-content:space-between;gap:12px;padding:10px 2px;border-bottom:1px solid var(--line)}
 .dl dt{color:var(--muted)}.dl dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
 .note{font-size:14px;color:var(--muted);margin:6px 2px}
+.vehset{display:grid;gap:8px}
+.vehset.arch{opacity:.65}
 h2{font:600 22px/1.1 var(--disp);letter-spacing:.03em;margin:22px 2px 8px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--muted);margin:4px 2px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
@@ -195,6 +197,8 @@ svg.ch{width:100%;height:auto;display:block;background:var(--surface);border:1px
     <div class="set">
       <h3>Vehículos</h3>
       <div id="setVeh" class="grp"></div>
+      <button class="line" id="btnAddVeh" type="button">+ Agregar vehículo</button>
+      <div class="note">Para cambiar de auto no renombres el anterior (se le cambiaría el nombre a todo su historial). Agregá el nuevo y archivá el viejo: sus registros se conservan en Historial y Resumen.</div>
       <div class="row2">
         <label>Moneda<input type="text" id="s-cur" maxlength="6"></label>
         <label>Tarifa de la luz en casa (por kWh)<input type="number" inputmode="decimal" step="any" min="0" id="s-tar"></label>
@@ -253,7 +257,10 @@ const isoDate=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
 const today=()=>isoDate(new Date());
 const fdate=s=>{if(!s)return'';const [y,m,d]=String(s).split('-');return `${d}/${m}/${y}`};
 const vehs=()=>S.settings.vehicles;
-const curVeh=()=>vehs()[U.veh]||vehs()[0];
+const isArch=v=>!!(v&&v.archived);
+const firstActive=()=>{const i=vehs().findIndex(v=>!isArch(v));return i>=0?i:0};
+const vlabel=v=>v.name+(isArch(v)?' (archivado)':'');
+const curVeh=()=>{if(!vehs()[U.veh]||(isArch(vehs()[U.veh])&&!U.edit))U.veh=firstActive();return vehs()[U.veh]};
 const sum=(a,k)=>a.reduce((t,r)=>t+(Number(r[k])||0),0);
 function fmtDur(min){
 const h=Math.floor(min/60),m=min%60;
@@ -314,7 +321,8 @@ function statsFor(name,from){
 const MODES={comb:'Combustible',elec:'Electricidad',serv:'Servicio o gasto'};
 const modesFor=v=>v.kind==='phev'?['comb','elec','serv']:['comb','serv'];
 function renderVehChips(){
-  $('#vehChips').innerHTML=chipsHTML(vehs().map((v,i)=>[String(i),v.name]),String(U.veh));
+  curVeh();
+  $('#vehChips').innerHTML=chipsHTML(vehs().map((v,i)=>[String(i),vlabel(v),v]).filter(x=>!isArch(x[2])||(U.edit&&vehs().indexOf(x[2])===U.veh)).map(x=>[x[0],x[1]]),String(U.veh));
 }
 function renderSeg(){
   const v=curVeh();
@@ -459,7 +467,7 @@ function onDelete(){
 
 /* ---------- render: historial ---------- */
 function renderHist(){
-  $('#hVeh').innerHTML=chipsHTML([['all','Todos'],...vehs().map(v=>[v.name,v.name])],U.hv);
+  $('#hVeh').innerHTML=chipsHTML([['all','Todos'],...vehs().map(v=>[v.name,vlabel(v)])],U.hv);
   $('#hTipo').innerHTML=chipsHTML([['all','Todo'],['comb','Combustible'],['elec','Electricidad'],['serv','Servicios']],U.ht);
   let items=[...S.cargas.map(r=>({s:'cargas',r,k:r.energia==='Electricidad'?'elec':'comb'})),...S.servicios.map(r=>({s:'servicios',r,k:'serv'}))];
   if(U.hv!=='all')items=items.filter(x=>x.r.veh===U.hv);
@@ -523,7 +531,7 @@ function chartSVG(names){
   <div class="legend"><span><i style="background:var(--fuel)"></i>Combustible</span><span><i style="background:var(--elec)"></i>Electricidad</span><span><i style="background:var(--serv)"></i>Servicios y reparaciones</span></div>`;
 }
 function renderRes(){
-  $('#rVeh').innerHTML=chipsHTML([['all','Flota'],...vehs().map(v=>[v.name,v.name])],U.rv);
+  $('#rVeh').innerHTML=chipsHTML([['all','Flota'],...vehs().map(v=>[v.name,vlabel(v)])],U.rv);
   $('#rPer').value=U.rp;
   const names=U.rv==='all'?vehs().map(v=>v.name):[U.rv];
   if(!S.cargas.length&&!S.servicios.length){$('#rBody').innerHTML='<div class="empty">Todavía no hay registros. Cargá el primero en la pestaña Cargar.</div>';return}
@@ -556,8 +564,9 @@ function renderRes(){
 
 /* ---------- render: ajustes ---------- */
 function renderSet(){
-  $('#setVeh').innerHTML=vehs().map((v,i)=>`<div class="row2"><label>Nombre<input type="text" data-vn="${i}" value="${esc(v.name)}"></label>
-    <label>Tipo<select data-vk="${i}"><option value="diesel"${v.kind==='diesel'?' selected':''}>Diésel</option><option value="phev"${v.kind==='phev'?' selected':''}>Híbrido enchufable</option></select></label></div>`).join('');
+  $('#setVeh').innerHTML=vehs().map((v,i)=>`<div class="vehset${isArch(v)?' arch':''}"><div class="row2"><label>Nombre<input type="text" data-vn="${i}" value="${esc(v.name)}"></label>
+    <label>Tipo<select data-vk="${i}"><option value="diesel"${v.kind==='diesel'?' selected':''}>Diésel</option><option value="phev"${v.kind==='phev'?' selected':''}>Híbrido enchufable</option></select></label></div>
+    <button class="line" type="button" data-va="${i}">${isArch(v)?'Reactivar este vehículo':'Archivar (ya no lo uso)'}</button></div>`).join('');
   $('#s-cur').value=S.settings.currency;$('#s-tar').value=S.settings.tariff;
   $('#s-url').value=S.settings.url;$('#s-key').value=S.settings.clave;
 }
@@ -715,6 +724,26 @@ $('#setVeh').addEventListener('change',e=>{
   if(t.dataset.vk!==undefined)vehs()[+t.dataset.vk].kind=t.value;
   save();renderAll();setMode(U.mode);sync();
 });
+$('#setVeh').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-va]');if(!b)return;
+  const i=+b.dataset.va,v=vehs()[i];
+  if(!isArch(v)){
+    if(vehs().filter(x=>!isArch(x)).length<=1)return toast('Tiene que quedar al menos un vehículo activo');
+    if(!confirm('¿Archivar "'+v.name+'"? Deja de aparecer en Cargar, pero su historial se conserva.'))return;
+    v.archived=true;
+    if(U.veh===i)U.veh=firstActive();
+  }else{delete v.archived}
+  save();renderAll();renderSet();setMode(U.mode);
+});
+$('#btnAddVeh').addEventListener('click',()=>{
+  const name=(prompt('Nombre del vehículo nuevo (ej.: "Hilux 2026")')||'').trim();
+  if(!name)return;
+  if(vehs().some(v=>v.name===name))return toast('Ya existe un vehículo con ese nombre');
+  const phev=confirm('¿Es híbrido enchufable?\n\nAceptar = híbrido enchufable\nCancelar = diésel');
+  vehs().push({name,kind:phev?'phev':'diesel'});
+  U.veh=vehs().length-1;
+  save();renderAll();renderSet();setMode('comb');toast('Vehículo agregado');
+});
 $('#s-cur').addEventListener('change',e=>{S.settings.currency=e.target.value.trim()||'$';save();renderAll()});
 $('#s-tar').addEventListener('change',e=>{S.settings.tariff=e.target.value;save();updateHints()});
 $('#s-url').addEventListener('change',e=>{S.settings.url=e.target.value.trim();save();setSyncState()});
@@ -722,6 +751,7 @@ $('#s-key').addEventListener('change',e=>{S.settings.clave=e.target.value;save()
 window.addEventListener('online',()=>sync());
 
 /* ---------- inicio ---------- */
+U.veh=firstActive();
 $('#f-fecha').value=today();
 setMode('comb');renderAll();
 if(S.settings.url)sync();
